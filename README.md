@@ -26,7 +26,7 @@ From the root of your **Vencord source folder**, create the userplugins folder i
 # (only if it doesn't already exist)
 mkdir -p src/userplugins
 
-git clone https://github.com/YOUR_USERNAME/TomFrontNetwork.git src/userplugins/TomFrontNetwork
+git clone https://github.com/TomFront/TomFrontNetwork.git src/userplugins/TomFrontNetwork
 ```
 
 Then build and inject:

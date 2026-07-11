@@ -41,7 +41,8 @@ const GuildProfileStore = findStoreLazy("GuildProfileStore");
 const InviteStore = findStoreLazy("InviteStore");
 
 const NETWORK_URL = "https://tomfront-socials.thomasimpact542.workers.dev/network";
-const REFRESH_MS = 5 * 60 * 1000;
+const REFRESH_MS = 30 * 1000;          // background poll
+const ACTIVITY_THROTTLE_MS = 8 * 1000; // min gap between activity-triggered refetches
 
 // The real Discord "Partnered Server Owner" profile badge object. Discord builds
 // the icon URL from the `icon` hash, so this is the genuine badge.
@@ -59,8 +60,10 @@ const OUR_MARK = "__tfNetwork";
 type Network = { partnered: string[]; verified: string[]; partnerOwners: string[]; };
 let network: Network = { partnered: [], verified: [], partnerOwners: [] };
 let refreshTimer: any = null;
+let lastFetch = 0;
 
 async function fetchNetwork() {
+    lastFetch = Date.now();
     try {
         const text = await Native.fetchNetwork(NETWORK_URL);
         if (!text) return;
@@ -72,6 +75,14 @@ async function fetchNetwork() {
         };
         sync();
     } catch { /* offline / blocked — keep last known data */ }
+}
+
+// Fires on store changes (navigating channels/DMs/profiles). Applies the current
+// data immediately, and refetches (throttled) so a just-run slash command shows up
+// within seconds as you move around — no Ctrl+R needed.
+function onActivity() {
+    sync();
+    if (Date.now() - lastFetch > ACTIVITY_THROTTLE_MS) fetchNetwork();
 }
 
 // ─── Which network guilds are loaded in this client ───────────────────────────
@@ -223,12 +234,12 @@ export default definePlugin({
     authors: [{ name: "tomfront", id: 175656408459640832n }],
 
     async start() {
-        // Re-apply whenever any of the relevant data is (re)loaded or updated.
-        GuildStore.addChangeListener(sync);
-        UserStore.addChangeListener(sync);
-        UserProfileStore?.addChangeListener?.(sync);
-        GuildProfileStore?.addChangeListener?.(sync);
-        InviteStore?.addChangeListener?.(sync);
+        // Re-apply (and throttle-refetch) whenever relevant data is (re)loaded or updated.
+        GuildStore.addChangeListener(onActivity);
+        UserStore.addChangeListener(onActivity);
+        UserProfileStore?.addChangeListener?.(onActivity);
+        GuildProfileStore?.addChangeListener?.(onActivity);
+        InviteStore?.addChangeListener?.(onActivity);
 
         await fetchNetwork();
         refreshTimer = setInterval(fetchNetwork, REFRESH_MS);
@@ -238,11 +249,11 @@ export default definePlugin({
         if (refreshTimer) clearInterval(refreshTimer);
         refreshTimer = null;
 
-        GuildStore.removeChangeListener(sync);
-        UserStore.removeChangeListener(sync);
-        UserProfileStore?.removeChangeListener?.(sync);
-        GuildProfileStore?.removeChangeListener?.(sync);
-        InviteStore?.removeChangeListener?.(sync);
+        GuildStore.removeChangeListener(onActivity);
+        UserStore.removeChangeListener(onActivity);
+        UserProfileStore?.removeChangeListener?.(onActivity);
+        GuildProfileStore?.removeChangeListener?.(onActivity);
+        InviteStore?.removeChangeListener?.(onActivity);
 
         // Remove the guild features we injected.
         for (const [id, mine] of injectedFeatures) {
